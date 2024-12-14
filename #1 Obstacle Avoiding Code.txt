@@ -1,0 +1,181 @@
+#include <AFMotor.h>
+#include <Servo.h>
+#include <NewPing.h>
+#include <LiquidCrystal_I2C.h>
+
+// Pins für den Ultraschallsensor
+#define Trig_Pin A0
+#define Echo_Pin A1
+#define Max_Dist 250
+#define STOP_DISTANCE 30 // Abstand in cm, bei dem das Fahrzeug stoppt
+
+// Maximalgeschwindigkeit der Motoren
+const int Max_Speed = 200;
+
+// Motoren und Servo initialisieren
+AF_DCMotor motor1(1, MOTOR12_1KHZ);
+AF_DCMotor motor2(2, MOTOR12_1KHZ);
+AF_DCMotor motor3(3, MOTOR34_1KHZ);
+AF_DCMotor motor4(4, MOTOR34_1KHZ);
+Servo myservo;
+NewPing ultra_sonic(Trig_Pin, Echo_Pin, Max_Dist);
+
+// LCD initialisieren
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Adresse 0x27, 16 Zeichen, 2 Zeilen
+
+void setup() {
+  Serial.begin(9600);
+
+  // LCD initialisieren
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Status: Start    ");
+  lcd.setCursor(0, 1);
+  lcd.print("Bereit...        ");
+  delay(1000);
+
+  // Servo initialisieren
+  myservo.attach(10);
+  myservo.write(90);  // Startposition (Mitte)
+  delay(500);
+
+  moveForward(); // Fahrzeug startet direkt in der Vorwärtsbewegung
+}
+
+void loop() {
+  int distance = scanForward(); // Umgebung vor dem Fahrzeug scannen
+
+  if (distance > 0 && distance <= STOP_DISTANCE) {
+    moveStop(); // Stoppen bei Hindernis
+    delay(500);
+
+    lcd.setCursor(0, 0);
+    lcd.print("Status: Stop     "); // Stop anzeigen
+    lcd.setCursor(0, 1);
+    lcd.print("Scanning...      ");
+
+    int distRight = scanRight(); // Nach rechts scannen
+    delay(500);
+    int distLeft = scanLeft();   // Nach links scannen
+    delay(500);
+
+    // Drehen in Richtung mit mehr Platz
+    if (distRight > distLeft) {
+      turnRight();
+    } else {
+      turnLeft();
+    }
+  } else {
+    moveForward(); // Weiter vorwärts fahren, wenn kein Hindernis erkannt wird
+  }
+}
+
+// Funktion: Umgebung vor dem Fahrzeug scannen
+int scanForward() {
+  myservo.write(90);  // Servo in Mittelposition
+  delay(300);
+  lcd.setCursor(0, 0);
+  lcd.print("Status: Faehrt   "); // Fährt anzeigen
+  lcd.setCursor(0, 1);
+  lcd.print("                 "); // Zweite Zeile löschen
+  return readDistance();
+}
+
+// Funktion: Umgebung nach rechts scannen
+int scanRight() {
+  lcd.setCursor(0, 0);
+  lcd.print("Status: Sucht    "); // Sucht anzeigen
+  lcd.setCursor(0, 1);
+  lcd.print("Nach rechts...   ");
+  myservo.write(10);  // Servo nach rechts drehen
+  delay(500);
+  int dist = readDistance();
+  myservo.write(90);  // Servo zurück zur Mitte
+  return dist;
+}
+
+// Funktion: Umgebung nach links scannen
+int scanLeft() {
+  lcd.setCursor(0, 0);
+  lcd.print("Status: Sucht    "); // Sucht anzeigen
+  lcd.setCursor(0, 1);
+  lcd.print("Nach links...    ");
+  myservo.write(170);  // Servo nach links drehen
+  delay(500);
+  int dist = readDistance();
+  myservo.write(90);  // Servo zurück zur Mitte
+  return dist;
+}
+
+// Funktion: Entfernung messen
+int readDistance() {
+  int cm = ultra_sonic.ping_cm();
+  if (cm <= 0) {  // Wenn Sensor keine gültige Messung liefert
+    cm = Max_Dist;
+  }
+  return cm;
+}
+
+// Funktion: Vorwärtsbewegung
+void moveForward() {
+  motor1.run(FORWARD);
+  motor2.run(FORWARD);
+  motor3.run(FORWARD);
+  motor4.run(FORWARD);
+
+  motor1.setSpeed(Max_Speed);
+  motor2.setSpeed(Max_Speed);
+  motor3.setSpeed(Max_Speed);
+  motor4.setSpeed(Max_Speed);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Status: Faehrt   "); // Fährt anzeigen
+  lcd.setCursor(0, 1);
+  lcd.print("                 "); // Zweite Zeile leeren
+  Serial.println("Fahrzeug fährt vorwärts...");
+}
+
+// Funktion: Stoppen
+void moveStop() {
+  motor1.run(RELEASE);
+  motor2.run(RELEASE);
+  motor3.run(RELEASE);
+  motor4.run(RELEASE);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Status: Stop     "); // Stop anzeigen
+  lcd.setCursor(0, 1);
+  lcd.print("                 "); // Zweite Zeile löschen
+  Serial.println("Fahrzeug gestoppt...");
+}
+
+// Funktion: Rechtsdrehung
+void turnRight() {
+  lcd.setCursor(0, 0);
+  lcd.print("Status: Rechts   "); // Rechtsdrehung anzeigen
+  lcd.setCursor(0, 1);
+  lcd.print("Dreht rechts...  ");
+  Serial.println("Fahrzeug dreht nach rechts...");
+  motor1.run(FORWARD);
+  motor2.run(FORWARD);
+  motor3.run(BACKWARD);
+  motor4.run(BACKWARD);
+  delay(800);  // Längere Drehzeit, um die Richtung deutlich zu ändern
+  moveForward(); // Danach wieder vorwärts fahren
+}
+
+// Funktion: Linksdrehung
+void turnLeft() {
+  lcd.setCursor(0, 0);
+  lcd.print("Status: Links    "); // Linksdrehung anzeigen
+  lcd.setCursor(0, 1);
+  lcd.print("Dreht links...   ");
+  Serial.println("Fahrzeug dreht nach links...");
+  motor1.run(BACKWARD);
+  motor2.run(BACKWARD);
+  motor3.run(FORWARD);
+  motor4.run(FORWARD);
+  delay(800);  // Längere Drehzeit, um die Richtung deutlich zu ändern
+  moveForward(); // Danach wieder vorwärts fahren
+}
